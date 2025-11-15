@@ -167,3 +167,15 @@ Requirements for tiling/serving targets:
 
 - Tippecanoe: https://github.com/mapbox/tippecanoe
 - PMTiles (CLI and JS): https://protomaps.com/docs/pmtiles
+
+## Progress Snapshot (Season/Vibes UI)
+
+Recent frontend work adds a richer filtering and scoring system on top of the precipitation seasons pipeline:
+
+1. **Toolbar filters** – Month, trip type, and group type selectors live in the fixed toolbar and feed the new scoring logic.
+2. **Region vibes data** – `data/region_vibes.json` seeds trip & group suitability attributes for the first batch of destinations (expanded to key European countries for experimentation).
+3. **Score-based styling** – The map now uses a normalized 0–1 “match” score to drive a green gradient and opacity. Popups display “NN% match” so users see how well a country fits their filters.
+4. **Map readability upgrades** – Oceans are blue, land has a white mask, subtle grey borders frame each country, and a `country_labels.geojson` source ensures one label per country (no duplicates on islands).
+5. **Byte-serving friendly server workflow** – `make serve` wraps `http-server` with range checks, so PMTiles, the new label GeoJSON, and vibes JSON update instantly.
+
+Next milestone: once we have Admin‑1 geometries, we’ll repeat this process (seasons + vibes + tiles) so users can drill into states or provinces starting with India.
