@@ -12,6 +12,12 @@
       background: #fff; padding: 8px 10px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.15);
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
     }
+    .toolbar-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
     #map { height: 100%; }
     .legend { background:#fff; padding:8px 10px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.15); font-size:13px; }
     .legend-item { display:flex; align-items:center; gap:6px; margin:4px 0; }
@@ -20,13 +26,49 @@
 </head>
 <body>
   <div id="toolbar">
-    <label for="month">Month: </label>
-    <select id="month">
-      <option value="jan">Jan</option><option value="feb">Feb</option><option value="mar">Mar</option>
-      <option value="apr">Apr</option><option value="may">May</option><option value="jun">Jun</option>
-      <option value="jul" selected>Jul</option><option value="aug">Aug</option><option value="sep">Sep</option>
-      <option value="oct">Oct</option><option value="nov">Nov</option><option value="dec">Dec</option>
-    </select>
+    <div class="toolbar-row">
+      <label for="month">Month:</label>
+      <select id="month">
+        <option value="jan">Jan</option>
+        <option value="feb">Feb</option>
+        <option value="mar">Mar</option>
+        <option value="apr">Apr</option>
+        <option value="may">May</option>
+        <option value="jun">Jun</option>
+        <option value="jul" selected>Jul</option>
+        <option value="aug">Aug</option>
+        <option value="sep">Sep</option>
+        <option value="oct">Oct</option>
+        <option value="nov">Nov</option>
+        <option value="dec">Dec</option>
+      </select>
+    </div>
+
+    <div class="toolbar-row">
+      <label for="tripType">Trip type:</label>
+      <select id="tripType">
+        <option value="any">Any</option>
+        <option value="leisure">Leisure</option>
+        <option value="touristy">Touristy</option>
+        <option value="adventure">Adventure</option>
+        <option value="nature">Nature</option>
+        <option value="beach">Beach</option>
+        <option value="city">City</option>
+        <option value="culture">Culture</option>
+        <option value="party">Party</option>
+      </select>
+    </div>
+
+    <div class="toolbar-row">
+      <label for="groupType">Group:</label>
+      <select id="groupType">
+        <option value="any">Any</option>
+        <option value="solo">Solo</option>
+        <option value="couples">Couples</option>
+        <option value="friends">Friends</option>
+        <option value="families">Families</option>
+      </select>
+    </div>
   </div>
   <div id="map"></div>
   <script type="module">
@@ -48,14 +90,22 @@
     // Updated PMTiles (v3) built from the latest GeoParquet, with maxzoom 6 for crisper boundaries
     const PMTILES_URL = 'pmtiles://data/world_admin0_with_seasons_v3.pmtiles';
     const SOURCE_ID = 'countries';
+    const LABELS_SOURCE_ID = 'country-labels';
     const SOURCE_LAYER = 'countries';
     const FEATURE_ID_FIELD = 'ADM0_A3';
+    const BASE_LAYER_ID = 'countries-base';
     const LAYER_ID = 'countries-fill';
+    const BOUNDARY_LAYER_ID = 'countries-boundary';
+    const LABEL_LAYER_ID = 'countries-labels';
     const COLORS = { Peak:'#249c8f', Shoulder:'#f0c34e', Off:'#e24a33', Unknown:'#bdbdbd' };
 
     const monthSelect = document.getElementById('month');
+    const tripTypeSelect = document.getElementById('tripType');
+    const groupTypeSelect = document.getElementById('groupType');
+
     let currentMonth = monthSelect.value;
     let seasons = {};
+    let regionVibes = {};
     let mapReady = false;
     let hoveredId = null;
     let activePopupId = null;
@@ -66,12 +116,18 @@
 
     const BASE_STYLE = {
       version: 8,
+      glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
       sources: {},
       layers: [
         {
+          id: 'land-mask',
+          type: 'background',
+          paint: { 'background-color': '#ffffff' }
+        },
+        {
           id: 'background',
           type: 'background',
-          paint: { 'background-color': '#e8edf3' }
+          paint: { 'background-color': '#d6ecff' }
         }
       ]
     };
@@ -100,11 +156,11 @@
         this._container = document.createElement('div');
         this._container.className = 'legend maplibregl-ctrl';
         this._container.innerHTML = `
-          <div><strong>Season</strong></div>
-          <div class="legend-item"><span class="swatch" style="background:${COLORS.Peak}"></span> Peak</div>
-          <div class="legend-item"><span class="swatch" style="background:${COLORS.Shoulder}"></span> Shoulder</div>
-          <div class="legend-item"><span class="swatch" style="background:${COLORS.Off}"></span> Off</div>
-          <div class="legend-item"><span class="swatch" style="background:${COLORS.Unknown}"></span> Unknown</div>
+          <div><strong>Match (Europe)</strong></div>
+          <div class="legend-item"><span class="swatch" style="background:#1b8f3a"></span> 100% match</div>
+          <div class="legend-item"><span class="swatch" style="background:#7ccf85"></span> ~80% match</div>
+          <div class="legend-item"><span class="swatch" style="background:#cdeed0"></span> ~60% match</div>
+          <div class="legend-item"><span class="swatch" style="background:#d0d0d0"></span> Low / no match</div>
         `;
         return this._container;
       }
@@ -118,32 +174,29 @@
 
     function paintExpression() {
       return [
-        'case',
-        ['==', ['feature-state', 'season'], 'Peak'], COLORS.Peak,
-        ['==', ['feature-state', 'season'], 'Shoulder'], COLORS.Shoulder,
-        ['==', ['feature-state', 'season'], 'Off'], COLORS.Off,
-        COLORS.Unknown
+        'interpolate',
+        ['linear'],
+        ['coalesce', ['feature-state', 'score'], 0],
+        0.0, '#f0f0f0',
+        0.6, '#cdeed0',
+        1.0, '#1b8f3a'
       ];
     }
 
     function buildPopupHtml(name, iso3, month) {
       const season = seasons[iso3]?.[month] || 'Unknown';
-      return `<strong>${name}</strong> (${iso3})<br>${season} season in ${month.toUpperCase()}`;
-    }
-
-    function applyMonth(month) {
-      currentMonth = month;
-      if (!mapReady || !map.getSource(SOURCE_ID)) return;
-      Object.entries(seasons).forEach(([iso3, record]) => {
-        map.setFeatureState(
-          { source: SOURCE_ID, sourceLayer: SOURCE_LAYER, id: iso3 },
-          { season: record?.[month] || 'Unknown' }
-        );
-      });
-
-      if (activePopupId) {
-        popup.setHTML(buildPopupHtml(activePopupName, activePopupId, month));
-      }
+      const score = overallScore(
+        iso3,
+        month,
+        tripTypeSelect.value,
+        groupTypeSelect.value
+      );
+      const pct = Math.round(score * 100);
+      return `
+        <strong>${name}</strong> (${iso3})<br>
+        ${pct}% match for ${month.toUpperCase()}<br>
+        <small>${season} season (climate component)</small>
+      `;
     }
 
     function clearHoverState() {
@@ -153,6 +206,7 @@
     }
 
     const seasonsPromise = fetch(SEASONS_FILE).then(r => r.json());
+    const vibesPromise = fetch('data/region_vibes.json').then(r => r.json());
 
     async function ensureSources() {
       if (!map.getSource(SOURCE_ID)) {
@@ -160,6 +214,19 @@
           type: 'vector',
           url: PMTILES_URL,
           promoteId: FEATURE_ID_FIELD
+        });
+      }
+
+      if (!map.getLayer(BASE_LAYER_ID)) {
+        map.addLayer({
+          id: BASE_LAYER_ID,
+          type: 'fill',
+          source: SOURCE_ID,
+          'source-layer': SOURCE_LAYER,
+          paint: {
+            'fill-color': '#ffffff',
+            'fill-opacity': 1
+          }
         });
       }
 
@@ -173,26 +240,153 @@
             'fill-color': paintExpression(),
             'fill-opacity': [
               'case',
+              // hovered feature always bright
               ['boolean', ['feature-state', 'hover'], false], 0.95,
-              0.85
+              // otherwise opacity scales with score (0–1)
+              [
+                'interpolate',
+                ['linear'],
+                ['coalesce', ['feature-state', 'score'], 0],
+                0.0, 0.1,
+                0.6, 0.5,
+                1.0, 0.9
+              ]
             ],
             'fill-outline-color': [
               'case',
               ['boolean', ['feature-state', 'hover'], false], '#222222',
-              '#ffffff'
+              '#d4d6de'
             ]
           }
         });
       }
+
+      if (!map.getLayer(BOUNDARY_LAYER_ID)) {
+        map.addLayer({
+          id: BOUNDARY_LAYER_ID,
+          type: 'line',
+          source: SOURCE_ID,
+          'source-layer': SOURCE_LAYER,
+          paint: {
+            'line-color': '#b9bcc6',
+            'line-width': [
+              'interpolate',
+              ['linear'],
+              ['zoom'],
+              1.5, 0.2,
+              4, 0.7
+            ],
+            'line-opacity': 0.9
+          }
+        });
+      }
+
+      if (!map.getSource(LABELS_SOURCE_ID)) {
+        map.addSource(LABELS_SOURCE_ID, {
+          type: 'geojson',
+          data: 'data/country_labels.geojson'
+        });
+      }
+
+      if (!map.getLayer(LABEL_LAYER_ID)) {
+        map.addLayer({
+          id: LABEL_LAYER_ID,
+          type: 'symbol',
+          source: LABELS_SOURCE_ID,
+          layout: {
+            'text-field': [
+              'get',
+              'name'
+            ],
+            'symbol-placement': 'point',
+            'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+            'text-size': 11,
+            'text-letter-spacing': 0.05,
+            'text-max-width': 8,
+            'text-allow-overlap': false
+          },
+          paint: {
+            'text-color': '#2e3d4f',
+            'text-halo-color': '#ffffff',
+            'text-halo-width': 1.2,
+            'text-halo-blur': 0.5
+          },
+          minzoom: 1.8
+        });
+      }
+    }
+
+    function seasonScore(season) {
+      if (season === 'Peak') return 1;
+      if (season === 'Shoulder') return 0.7;
+      if (season === 'Off') return 0.3;
+      return 0;
+    }
+
+    function tripMatchScore(regionTags, selectedTrip) {
+      if (selectedTrip === 'any') return 1;
+      if (!regionTags) return 0;
+      return regionTags.includes(selectedTrip) ? 1 : 0;
+    }
+
+    function groupMatchScore(regionTags, selectedGroup) {
+      if (selectedGroup === 'any') return 1;
+      if (!regionTags) return 0;
+      return regionTags.includes(selectedGroup) ? 1 : 0;
+    }
+
+    function overallScore(regionId, month, tripType, groupType) {
+      const season = seasons[regionId]?.[month] || 'Unknown';
+      const sScore = seasonScore(season);
+
+      const vibes = regionVibes[regionId];
+      if (!vibes) {
+        return 0;
+      }
+
+      const tScore = tripMatchScore(vibes.trip_types, tripType);
+      const gScore = groupMatchScore(vibes.group_types, groupType);
+
+      const wSeason = 0.6;
+      const wTrip = 0.25;
+      const wGroup = 0.15;
+      const raw = wSeason * sScore + wTrip * tScore + wGroup * gScore;
+
+      return Math.max(0, Math.min(1, raw));
+    }
+
+    function applyFilters() {
+      if (!mapReady || !map.getSource(SOURCE_ID)) return;
+
+      const month = monthSelect.value;
+      const tripType = tripTypeSelect.value;
+      const groupType = groupTypeSelect.value;
+      currentMonth = month;
+
+      Object.entries(seasons).forEach(([regionId, record]) => {
+        const season = record?.[month] || 'Unknown';
+        const score = overallScore(regionId, month, tripType, groupType);
+
+        map.setFeatureState(
+          { source: SOURCE_ID, sourceLayer: SOURCE_LAYER, id: regionId },
+          { season, score }
+        );
+      });
+
+      if (activePopupId) {
+        popup.setHTML(buildPopupHtml(activePopupName, activePopupId, month));
+      }
     }
 
     map.on('load', async () => {
-      seasons = await seasonsPromise;
+      const [seasonsData, vibesData] = await Promise.all([seasonsPromise, vibesPromise]);
+      seasons = seasonsData;
+      regionVibes = vibesData;
       await ensureSources();
 
       map.addControl(new LegendControl(), 'bottom-left');
       mapReady = true;
-      applyMonth(currentMonth);
+      applyFilters();
     });
 
     map.on('mousemove', LAYER_ID, e => {
@@ -228,7 +422,9 @@
         .addTo(map);
     });
 
-    monthSelect.addEventListener('change', e => applyMonth(e.target.value));
+    monthSelect.addEventListener('change', () => applyFilters());
+    tripTypeSelect.addEventListener('change', () => applyFilters());
+    groupTypeSelect.addEventListener('change', () => applyFilters());
   </script>
 </body>
 </html>
